@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agroforte - Simulador de Colheita</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background-color: #1e3d2f;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        #painel {
+            position: absolute;
+            top: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            text-align: center;
+            pointer-events: none;
+            border-left: 5px solid #2e7d32;
+        }
+        h1 {
+            color: #1b5e20;
+            font-size: 24px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        p {
+            color: #455a64;
+            font-size: 14px;
+        }
+        canvas {
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            background: #87CEEB;
+        }
+        .controles {
+            position: absolute;
+            bottom: 20px;
+            display: flex;
+            gap: 15px;
+        }
+        button {
+            background: #2e7d32;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+        button:hover {
+            background: #1b5e20;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="painel">
+        <h1>Agroforte</h1>
+        <p>Produção Automatizada | Grãos Colhidos: <span id="contador">0</span> kg</p>
+    </div>
+
+    <canvas id="cenarioAgro"></canvas>
+
+    <div class="controles">
+        <button onclick="mudarVelocidade(1)">Velocidade Normal</button>
+        <button onclick="mudarVelocidade(2.5)">Acelerar Colheita</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('cenarioAgro');
+        const ctx = canvas.getContext('2d');
+        const contadorTexto = document.getElementById('contador');
+
+        // Configuração responsiva do tamanho da tela
+        canvas.width = Math.min(window.innerWidth - 40, 1000);
+        canvas.height = Math.min(window.innerHeight - 150, 600);
+
+        let graosColhidos = 0;
+        let velocidadeMultiplicador = 1;
+
+        // Configurações do Campo de Plantação (linhas e blocos)
+        const linhasCampo = 10;
+        const colunasCampo = 25;
+        const larguraBloco = canvas.width / colunasCampo;
+        const alturaLinha = (canvas.height * 0.5) / linhasCampo;
+        const inicioYCampo = canvas.height * 0.45; // Onde a plantação começa verticalmente
+
+        // Matriz da plantação (true = pronto para colher, false = colhido)
+        let plantacao = [];
+        for (let l = 0; l < linhasCampo; l++) {
+            plantacao[l] = [];
+            for (let c = 0; c < colunasCampo; c++) {
+                plantacao[l][c] = true;
+            }
+        }
+
+        // Classe da Máquina Colhedora Agroforte
+        class Colhedora {
+            constructor() {
+                this.largura = 70;
+                this.altura = 40;
+                this.x = -this.largura;
+                this.linhaAtual = 0;
+                this.y = inicioYCampo + (this.linhaAtual * alturaLinha) - 10;
+                const baseVelocidade = 1.5;
+                this.velocidade = baseVelocidade;
+                this.direcao = 1; // 1 = Direita, -1 = Esquerda
+            }
+
+            atualizar() {
+                // Movimentação
+                this.x += this.velocidade * this.direcao * velocidadeMultiplicador;
+
+                // Identifica em qual coluna a máquina está passando
+                let colunaAtual = Math.floor((this.x + this.largura/2) / larguraBloco);
+                
+                // Processa a colheita se estiver dentro dos limites
+                if (colunaAtual >= 0 && colunaAtual < colunasCampo && this.linhaAtual < linhasCampo) {
+                    if (plantacao[this.linhaAtual][colunaAtual]) {
+                        plantacao[this.linhaAtual][colunaAtual] = false; // Colhe o grão
+                        graosColhidos += Math.floor(Math.random() * 50) + 100;
+                        contadorTexto.innerText = graosColhidos.toLocaleString('pt-BR');
+                    }
+                }
+
+                // Lógica de virada nas bordas da tela
+                if (this.direcao === 1 && this.x > canvas.width) {
+                    this.proximaLinha();
+                } else if (this.direcao === -1 && this.x < -this.largura) {
+                    this.proximaLinha();
+                }
+            }
+
+            proximaLinha() {
+                this.linhaAtual++;
+                // Se terminar o campo, reinicia do topo e replanta tudo
+                if (this.linhaAtual >= linhasCampo) {
+                    this.linhaAtual = 0;
+                    reiniciarPlantacao();
+                }
+                this.direcao *= -1; // Inverte o sentido do movimento
+                this.y = inicioYCampo + (this.linhaAtual * alturaLinha) - 10;
+                this.x = this.direcao === 1 ? -this.largura : canvas.width;
+            }
+
+            desenhar() {
+                ctx.save();
+                // Move a origem para a posição da máquina para facilitar o espelhamento gráfico
+                ctx.translate(this.x + this.largura / 2, this.y + this.altura / 2);
+                if (this.direcao === -1) {
+                    ctx.scale(-1, 1); // Espelha o gráfico se estiver indo para a esquerda
+                }
+
+                // Corpo da Colhedora Agroforte (Verde Forte)
+                ctx.fillStyle = '#2e7d32';
+                ctx.fillRect(-this.largura/2, -this.altura/2, this.largura - 15, this.altura);
+
+                // Cabine de Vidro
+                ctx.fillStyle = '#b3e5fc';
+                ctx.fillRect(this.largura/2 - 25, -this.altura/2 + 5, 15, this.altura - 10);
+                ctx.strokeStyle = '#0288d1';
+                ctx.strokeRect(this.largura/2 - 25, -this.altura/2 + 5, 15, this.altura - 10);
+
+                // Detalhe do Teto (Amarelo Agroforte)
+                ctx.fillStyle = '#fbc02d';
+                ctx.fillRect(-this.largura/2 - 2, -this.altura/2 - 4, this.largura - 10, 5);
+
+                // Rodas Grandes Traseiras
+                ctx.fillStyle = '#212121';
+                ctx.beginPath();
+                ctx.arc(-this.largura/4, this.altura/2, 12, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Rodas Dianteiras
+                ctx.beginPath();
+                ctx.arc(this.largura/4, this.altura/2, 9, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Molinete de Corte Giratório Frontal (Plataforma)
+                ctx.fillStyle = '#757575';
+                ctx.fillRect(this.largura/2 - 12, -this.altura/4, 15, this.altura/1.5);
+                
+                // Dentes de corte do molinete
+                ctx.fillStyle = '#fbc02d';
+                ctx.fillRect(this.largura/2 + 3, -this.altura/4, 4, this.altura/1.5);
+
+                ctx.restore();
+            }
+        }
+
+        const maquina = new Colhedora();
+
+        function reiniciarPlantacao() {
+            for (let l = 0; l < linhasCampo; l++) {
+                for (let c = 0; c < colunasCampo; c++) {
+                    plantacao[l][c] = true;
+                }
+            }
+        }
+
+        function mudarVelocidade(novaVelocidade) {
+            velocidadeMultiplicador = novaVelocidade;
+        }
+
+        // Loop principal de Renderização da Animação
+        function loop() {
+            // Limpa a tela com a cor do Céu
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Desenha o Sol
+            ctx.fillStyle = '#fff176';
+            ctx.beginPath();
+            ctx.arc(canvas.width - 80, 70, 40, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Desenha as montanhas de fundo
+            ctx.fillStyle = '#c5e1a5';
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height * 0.5);
+            ctx.quadraticCurveTo(canvas.width * 0.25, canvas.height * 0.3, canvas.width * 0.5, canvas.height * 0.5);
+            ctx.quadraticCurveTo(canvas.width * 0.75, canvas.height * 0.35, canvas.width, canvas.height * 0.5);
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.lineTo(0, canvas.height);
+            ctx.fill();
+
+            // Solo base da plantação (Terra)
+            ctx.fillStyle = '#5d4037';
+            ctx.fillRect(0, inicioYCampo, canvas.width, canvas.height - inicioYCampo);
+
+            // Desenha a Plantação (Grãos Dourados)
+            for (let l = 0; l < linhasCampo; l++) {
+                for (let c = 0; c < colunasCampo; c++) {
+                    let xBloco = c * larguraBloco;
+                    let yBloco = inicioYCampo + (l * alturaLinha);
+
+                    if (plantacao[l][c]) {
+                        // Desenha Trigo/Milho (Pronto para Colheita)
+                        ctx.fillStyle = '#ffb300';
+                        ctx.fillRect(xBloco + 2, yBloco + 4, larguraBloco - 4, alturaLinha - 6);
+                        
+                        // Detalhe da ponta das plantas
+                        ctx.fillStyle = '#ffe082';
+                        ctx.fillRect(xBloco + 6, yBloco, larguraBloco - 12, 4);
+                    } else {
+                        // Desenha solo pós-colheita (Restolho mais escuro)
+                        ctx.fillStyle = '#6d4c41';
+                        ctx.fillRect(xBloco + 2, yBloco + 4, larguraBloco - 4, alturaLinha - 6);
+                    }
+                }
+            }
+
+            // Atualiza e desenha a máquina colhedora
+            maquina.atualizar();
+            maquina.desenhar();
+
+            requestAnimationFrame(loop);
+        }
+
+        // Inicia a animação
+        loop();
+
+        // Responsividade ao redimensionar a janela
+        window.addEventListener('resize', () => {
+            canvas.width = Math.min(window.innerWidth - 40, 1000);
+            canvas.height = Math.min(window.innerHeight - 150, 600);
+        });
+    </script>
+</body>
+</html>
